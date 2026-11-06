@@ -122,6 +122,82 @@ function Brush($hex) { (New-Object Windows.Media.BrushConverter).ConvertFromStri
 function Update-UI { $window.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Background) }
 function Get-Err($e) { if ($e.Exception.InnerException) { $e.Exception.InnerException.Message } else { $e.Exception.Message } }
 
+function Set-RoundedButtonStyle($targetWindow) {
+    $style = New-Xaml @'
+<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       TargetType="{x:Type Button}">
+  <Setter Property="Background" Value="White"/>
+  <Setter Property="Foreground" Value="#1B1B1B"/>
+  <Setter Property="BorderBrush" Value="#BDBDBD"/>
+  <Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="Padding" Value="12,0"/>
+  <Setter Property="Cursor" Value="Hand"/>
+  <Setter Property="Template">
+    <Setter.Value>
+      <ControlTemplate TargetType="{x:Type Button}">
+        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="6" SnapsToDevicePixels="True">
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="Chrome" Property="BorderBrush" Value="#0F6CBD"/>
+          </Trigger>
+          <Trigger Property="IsPressed" Value="True">
+            <Setter TargetName="Chrome" Property="Opacity" Value="0.82"/>
+          </Trigger>
+          <Trigger Property="IsEnabled" Value="False">
+            <Setter TargetName="Chrome" Property="Opacity" Value="0.5"/>
+          </Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True">
+            <Setter TargetName="Chrome" Property="BorderBrush" Value="#0F6CBD"/>
+          </Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>
+'@
+    $targetWindow.Resources.Add([Windows.Controls.Button], $style)
+}
+
+function Set-SlimScrollbarStyle($targetWindow) {
+    $style = New-Xaml @'
+<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       TargetType="{x:Type ScrollBar}">
+  <Setter Property="Width" Value="8"/>
+  <Setter Property="MinWidth" Value="8"/>
+  <Setter Property="Background" Value="Transparent"/>
+  <Setter Property="Template">
+    <Setter.Value>
+      <ControlTemplate TargetType="{x:Type ScrollBar}">
+        <Grid Background="Transparent">
+          <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True"
+                 Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                 Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+            <Track.Thumb>
+              <Thumb>
+                <Thumb.Template>
+                  <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="#BDBDBD" CornerRadius="3" Margin="1"/>
+                  </ControlTemplate>
+                </Thumb.Template>
+              </Thumb>
+            </Track.Thumb>
+          </Track>
+        </Grid>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>
+'@
+    $targetWindow.Resources.Add([Windows.Controls.Primitives.ScrollBar], $style)
+}
 
 
 
@@ -246,32 +322,6 @@ $xaml = @'
         Title="PCSetter" Width="760" Height="560" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterScreen" Background="#F3F3F3" FontFamily="Segoe UI" UseLayoutRounding="True">
   <Window.Resources>
-    <Style TargetType="{x:Type ScrollBar}">
-      <Setter Property="Width" Value="8"/>
-      <Setter Property="MinWidth" Value="8"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="{x:Type ScrollBar}">
-            <Grid Background="Transparent">
-              <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True"
-                     Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
-                     Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
-                <Track.Thumb>
-                  <Thumb>
-                    <Thumb.Template>
-                      <ControlTemplate TargetType="{x:Type Thumb}">
-                        <Border Background="#BDBDBD" CornerRadius="3" Margin="1"/>
-                      </ControlTemplate>
-                    </Thumb.Template>
-                  </Thumb>
-                </Track.Thumb>
-              </Track>
-            </Grid>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
     <!-- Look of the check box of an app that is already installed: filled blue, white tick, small lock badge. -->
     <ControlTemplate x:Key="LockedCheck" TargetType="CheckBox">
       <Grid Background="Transparent">
@@ -320,6 +370,8 @@ $xaml = @'
 </Window>
 '@
 $window       = New-Xaml $xaml
+Set-RoundedButtonStyle $window
+Set-SlimScrollbarStyle $window
 $Heading      = $window.FindName('Heading')
 $Subheading   = $window.FindName('Subheading')
 $List         = $window.FindName('List')
@@ -388,6 +440,213 @@ function New-ProgressRow($app) {
   </Grid>
 </Border>
 "@
+}
+
+function Get-EdgeUninstallEntry {
+    $roots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($root in $roots) {
+        $entries = @(Get-ItemProperty -Path $root -ErrorAction SilentlyContinue | Where-Object {
+            $_.DisplayName -eq 'Microsoft Edge' -and $_.NoRemove -eq 0 -and $_.UninstallString
+        })
+        foreach ($entry in $entries) {
+            $uninstall = [string]$entry.UninstallString
+            if ($uninstall -match '^\s*"([^"]+)"\s*(.*)$') {
+                $exe = $Matches[1]
+                $arguments = $Matches[2]
+            } elseif ($uninstall -match '^\s*(\S+)\s+(.*)$') {
+                $exe = $Matches[1]
+                $arguments = $Matches[2]
+            } else { continue }
+            if ($exe -match '\\Microsoft\\Edge\\Application\\[^\\]+\\Installer\\setup\.exe$' -and
+                $arguments -match '(?i)(^|\s)--uninstall(\s|$)' -and (Test-Path -LiteralPath $exe)) {
+                return @{ FilePath=$exe; Arguments=$arguments }
+            }
+        }
+    }
+    return $null
+}
+
+function Get-DebloatChoices {
+    $targets = @(
+        @{ Name='Microsoft Edge'; Kind='edge'; Description='Uninstall is available only in supported regions (including the EEA) and Windows versions; removal may affect all users.' }
+        @{ Name='Microsoft Teams (personal)'; Kind='appx'; Packages=@('MSTeams','MicrosoftTeams') }
+        @{ Name='Clipchamp'; Kind='appx'; Packages=@('Clipchamp.Clipchamp') }
+        @{ Name='Xbox app'; Kind='appx'; Packages=@('Microsoft.GamingApp') }
+        @{ Name='Microsoft Solitaire Collection'; Kind='appx'; Packages=@('Microsoft.MicrosoftSolitaireCollection') }
+        @{ Name='Microsoft Copilot'; Kind='appx'; Packages=@('Microsoft.Copilot') }
+        @{ Name='Microsoft 365 app'; Kind='appx'; Packages=@('Microsoft.MicrosoftOfficeHub') }
+        @{ Name='OneDrive'; Kind='onedrive'; Description='Removing the sync app stops future syncing; it does not intentionally delete cloud files.' }
+        @{ Name='Tips'; Kind='appx'; Packages=@('Microsoft.Getstarted') }
+        @{ Name='Feedback Hub'; Kind='appx'; Packages=@('Microsoft.WindowsFeedbackHub') }
+        @{ Name='Phone Link'; Kind='appx'; Packages=@('Microsoft.YourPhone') }
+        @{ Name='Microsoft News'; Kind='appx'; Packages=@('Microsoft.BingNews') }
+        @{ Name='Microsoft Bing Weather'; Kind='appx'; Packages=@('Microsoft.BingWeather') }
+    )
+    $choices = @()
+    foreach ($target in $targets) {
+        $choice = @{ Target=$target; Packages=@(); FilePath=$null; Arguments=$null; Available=$false; Detail='Not installed for this user' }
+        if ($target.Kind -eq 'appx') {
+            foreach ($packageName in $target.Packages) {
+                $choice.Packages += @(Get-AppxPackage -Name $packageName -ErrorAction Stop | Where-Object { $_.Name -eq $packageName })
+            }
+            if ($choice.Packages.Count -gt 0) {
+                $choice.Available = $true
+                $choice.Detail = 'Installed for this user'
+            }
+        } elseif ($target.Kind -eq 'edge') {
+            $edge = Get-EdgeUninstallEntry
+            if ($edge) {
+                $choice.Available = $true
+                $choice.FilePath = $edge.FilePath
+                $choice.Arguments = $edge.Arguments
+                $choice.Detail = 'Windows exposes a supported uninstall option'
+            } else {
+                $choice.Detail = 'Unavailable: Windows does not expose a supported uninstall option on this PC. Edge uninstall is limited to supported regions (including the EEA) and Windows versions.'
+            }
+        } else {
+            $installed = @($script:InstalledNames | Where-Object { $_ -eq 'Microsoft OneDrive' })
+            $setups = @(
+                (Join-Path $env:SystemRoot 'SysWOW64\OneDriveSetup.exe'),
+                (Join-Path $env:SystemRoot 'System32\OneDriveSetup.exe')
+            )
+            $setup = $setups | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if ($installed.Count -gt 0 -and $setup) {
+                $choice.Available = $true
+                $choice.FilePath = $setup
+                $choice.Detail = $target.Description
+            }
+        }
+        $choices += $choice
+    }
+    return $choices
+}
+
+function Invoke-DebloatChoice($choice) {
+    if ($choice.Target.Kind -eq 'appx') {
+        $removed = 0
+        foreach ($package in $choice.Packages) {
+            $current = @(Get-AppxPackage -Name $package.Name -ErrorAction Stop |
+                Where-Object { $_.PackageFullName -eq $package.PackageFullName })
+            foreach ($installedPackage in $current) {
+                Remove-AppxPackage -Package $installedPackage.PackageFullName -ErrorAction Stop
+                $removed++
+                $script:DebloatChanged = $true
+            }
+        }
+        if ($removed -eq 0) { return 'Already removed' }
+        return 'Removed for this user'
+    }
+    if ($choice.Target.Kind -eq 'edge') {
+        $edge = Get-EdgeUninstallEntry
+        if (-not $edge) { return 'Skipped: Windows does not expose the supported uninstall option' }
+        $process = Start-Process -FilePath $edge.FilePath -ArgumentList $edge.Arguments -PassThru
+    } else {
+        if (-not (Test-Path -LiteralPath $choice.FilePath)) { return 'Skipped: uninstaller is no longer available' }
+        $process = Start-Process -FilePath $choice.FilePath -ArgumentList '/uninstall' -PassThru
+    }
+    Wait-ProcessUI $process
+    if ($process.ExitCode -ne 0) { throw "Uninstaller exited with code $($process.ExitCode)" }
+    $script:DebloatChanged = $true
+    return 'Uninstalled'
+}
+
+function Show-DebloatDialog {
+    $selectionBefore = @(Get-Selected | ForEach-Object { $_.Id })
+    $choices = @(Get-DebloatChoices)
+    $dialog = New-Xaml @"
+<Window $ns Title="Debloat Windows" Width="560" Height="620" MinWidth="480" MinHeight="420"
+        WindowStartupLocation="CenterOwner" Background="#F3F3F3" FontFamily="Segoe UI" ShowInTaskbar="False">
+  <Grid Margin="20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+      <TextBlock Text="Choose apps to remove" FontSize="18" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+      <TextBlock Text="App package removals affect the current user. Edge uses Windows' standard uninstaller and may affect all users. Provisioned apps are not removed."
+                 FontSize="12" Foreground="#5C5C5C" TextWrapping="Wrap" Margin="0,4,0,0"/>
+    </StackPanel>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="TargetList"/>
+    </ScrollViewer>
+    <DockPanel Grid.Row="2" Margin="0,12,0,0" LastChildFill="False">
+      <TextBlock x:Name="DebloatStatus" VerticalAlignment="Center" FontSize="12" Foreground="#5C5C5C" TextWrapping="Wrap"/>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+        <Button x:Name="DebloatCancel" Content="Cancel" MinWidth="84" Height="36" Margin="0,0,8,0" Padding="12,0" Background="White" BorderBrush="#BDBDBD"/>
+        <Button x:Name="DebloatConfirm" Content="Remove selected" MinWidth="120" Height="36" Padding="12,0" Background="#0F6CBD" Foreground="White" FontWeight="SemiBold" BorderThickness="0"/>
+      </StackPanel>
+    </DockPanel>
+  </Grid>
+</Window>
+"@
+    Set-RoundedButtonStyle $dialog
+    Set-SlimScrollbarStyle $dialog
+    $dialog.Owner = $window
+    $targetList = $dialog.FindName('TargetList')
+    $status = $dialog.FindName('DebloatStatus')
+    $removeButton = $dialog.FindName('DebloatConfirm')
+    $cancelButton = $dialog.FindName('DebloatCancel')
+    $rows = @()
+    $script:DebloatChanged = $false
+    foreach ($choice in $choices) {
+        $name = Esc $choice.Target.Name
+        $detail = Esc $choice.Detail
+        $row = New-Xaml @"
+<Border $ns Background="White" BorderBrush="#E1E1E1" BorderThickness="1" CornerRadius="5" Padding="10,7" Margin="0,0,0,5">
+  <StackPanel>
+    <CheckBox x:Name="TargetCheck" Content="$name" IsEnabled="$($choice.Available.ToString().ToLowerInvariant())"
+              FontSize="13" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+    <TextBlock Text="$detail" FontSize="11" Foreground="#5C5C5C" TextWrapping="Wrap" Margin="20,2,0,0"/>
+  </StackPanel>
+</Border>
+"@
+        $checkbox = $row.FindName('TargetCheck')
+        $null = $targetList.Children.Add($row)
+        $rows += @{ Choice=$choice; Check=$checkbox }
+    }
+    $cancelButton.Add_Click(({ $dialog.Close() }).GetNewClosure())
+    $removeHandler = {
+        $selected = @($rows | Where-Object { $_.Check.IsChecked -and $_.Choice.Available })
+        if ($selected.Count -eq 0) { $status.Text = 'Select at least one available app to remove.'; return }
+        $names = @($selected | ForEach-Object { $_.Choice.Target.Name }) -join "`n"
+        $warning = "Proceed with removing these items?`n`n$names`n`nApp package removals affect the current user. Edge uses Windows' standard uninstaller and may affect all users. Removing OneDrive stops syncing but does not intentionally delete cloud files."
+        $answer = [Windows.MessageBox]::Show($warning, 'Confirm removal', 'YesNo', 'Warning')
+        if ($answer -ne 'Yes') { return }
+        $removeButton.IsEnabled = $false
+        $cancelButton.IsEnabled = $false
+        $failures = 0
+        foreach ($item in $selected) {
+            $status.Text = "Removing $($item.Choice.Target.Name)..."
+            Update-UI
+            try {
+                $result = Invoke-DebloatChoice $item.Choice
+                Write-Log "Debloat $($item.Choice.Target.Name): $result"
+                $status.Text = "$($item.Choice.Target.Name): $result"
+                if ($result -like 'Skipped:*') { $failures++ }
+            } catch {
+                $message = Get-Err $_
+                Write-Log "Debloat $($item.Choice.Target.Name) failed: $message"
+                $status.Text = "$($item.Choice.Target.Name) failed: $message"
+                $failures++
+            }
+            Update-UI
+        }
+        $removeButton.IsEnabled = $true
+        $cancelButton.IsEnabled = $true
+        if ($failures -eq 0) { $status.Text = 'Finished. Close this dialog to refresh the app list.' }
+        else { $status.Text += " $failures item(s) were skipped or failed; see the log for details." }
+    }.GetNewClosure()
+    $removeButton.Add_Click($removeHandler)
+    [void]$dialog.ShowDialog()
+    if ($script:DebloatChanged) {
+        Show-Picker
+        foreach ($id in $selectionBefore) {
+            if ($Checks.ContainsKey($id)) { $Checks[$id].IsChecked = $true }
+        }
+    }
 }
 
 
@@ -625,6 +884,32 @@ function Install-App($app) {
 # ---- 7.1  Picker screen --------------------------------------------------
 # Builds the list of apps. Runs at start-up and again from the "Back to installer" button, so apps that were
 # installed in the meantime show up locked and the rest can be picked again.
+function Add-DebloatSection {
+    $enabled = if ($VerifyOnly) { 'False' } else { 'True' }
+    $section = New-Xaml @"
+<Border $ns Background="White" BorderBrush="#E1E1E1" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,6,0,8">
+  <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel VerticalAlignment="Center">
+      <TextBlock Text="Debloat Windows" FontSize="14" FontWeight="SemiBold" Foreground="#1B1B1B"/>
+      <TextBlock Text="Review and optionally remove built-in apps" FontSize="12" Foreground="#5C5C5C" Margin="0,3,12,0"/>
+    </StackPanel>
+    <Button x:Name="DebloatButton" Grid.Column="1" Content="Debloat" IsEnabled="$enabled" MinWidth="88" Height="36" Padding="12,0" Background="White" BorderBrush="#BDBDBD"/>
+  </Grid>
+</Border>
+"@
+    $debloatButton = $section.FindName('DebloatButton')
+    $debloatButton.Add_Click({
+        try { Show-DebloatDialog }
+        catch {
+            $message = Get-Err $_
+            Write-Log "Debloat UI error: $message"
+            [void][Windows.MessageBox]::Show("Could not open Debloat:`n`n$message", 'PCSetter', 'OK', 'Error')
+        }
+    })
+    $null = $List.Children.Add($section)
+}
+
 function Show-Picker {
     $script:Phase  = 'pick'
     $script:Cancel = $false
@@ -639,8 +924,13 @@ function Show-Picker {
     $BtnSecondary.IsEnabled = $true
 
     $cat = $null
+    $debloatSectionAdded = $false
     foreach ($app in $Apps) {
         if ($app.Category -ne $cat) {
+            if ($cat -eq 'Windows' -and -not $debloatSectionAdded) {
+                Add-DebloatSection
+                $debloatSectionAdded = $true
+            }
             $cat = $app.Category
             $null = $List.Children.Add((New-Xaml ('<TextBlock {0} Text="{1}" FontSize="12" FontWeight="SemiBold" Foreground="#5C5C5C" Margin="0,10,0,6"/>' -f $ns, (Esc $cat.ToUpper()))))
         }
@@ -663,6 +953,7 @@ function Show-Picker {
         }
         $null = $List.Children.Add($row)
     }
+    if ($cat -eq 'Windows' -and -not $debloatSectionAdded) { Add-DebloatSection }
 
     $Subheading.Text = 'Each installer is downloaded from the publisher official site. Its digital signature is checked before it runs.'
     if ($script:InstalledCount -gt 0) { $Subheading.Text += ' Apps already installed on this PC are locked.' }
